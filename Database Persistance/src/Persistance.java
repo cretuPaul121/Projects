@@ -5,7 +5,13 @@ import java.sql.Statement;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/*
+ * I used a map <String,String> to save the variable name and variable datatype
+ * to use later to create the tables
+ */
+
 public class Persistance {
+	
 	private GetDbConnection connection;
 	private String tableName;
 	private String databaseName;
@@ -16,10 +22,10 @@ public class Persistance {
 		this.databaseName = databaseName;
 	}
 
+
 	
 	/*
-	 * I used a map <String,String> to save the variable name and variable datatype
-	 * to use later to create the tables
+	 * save an object to the database
 	 */
 	
 	public void saveToDb(Object o) {
@@ -27,61 +33,22 @@ public class Persistance {
 
 		tableName = o.getClass().getSimpleName();
 
-		StringBuilder sb = new StringBuilder();
+		String datatypes = initializeDataype(map);
 
-		sb.append("( ");
-
-		//initial string with the java datatype
-		for (Map.Entry<String, String> entry : map.entrySet()) {
-			sb.append(entry.getKey() + " " + entry.getValue() + " , ");
-		}
-
-		sb.deleteCharAt(sb.length() - 1);
-		sb.deleteCharAt(sb.length() - 1);
-
-		sb.append(" )");
-
-		String[] changeTypes = sb.toString().split(" ");
+		String[] changeTypes = datatypes.split(" ");
 
 		// change java datatype with the MYSQL dataype suitable him
-		for (int i = 0; i < changeTypes.length; i++) {
+		changesJavaDataTypesWithMysql(changeTypes);
 
-			switch (changeTypes[i]) {
-			case "double": {
-				changeTypes[i] = "DOUBLE";
-			}
-				break;
-
-			case "String": {
-				changeTypes[i] = "VARCHAR(255)";
-			}
-				break;
-
-			case "int": {
-				changeTypes[i] = "INT";
-			}
-				break;
-
-			case "boolean": {
-				changeTypes[i] = "MEDIUMINT";
-			}
-				break;
-			case "float": {
-				changeTypes[i] = "FLOAT";
-			}
-				break;
-			}
-
-		}
-
-		//final dataTypes
+		// final dataTypes
 		String dataTypes = "";
 
 		for (int i = 0; i < changeTypes.length; i++) {
 			dataTypes += " " + changeTypes[i];
 		}
-		
-		//I used the first sb instance to make a string like (variable - datatype...)
+
+		System.out.println(dataTypes);
+		// I used the first sb instance to make a string like (variable - datatype...)
 
 		// get the connection with mysql
 
@@ -98,51 +65,10 @@ public class Persistance {
 			st.executeUpdate("USE " + databaseName);
 			st.executeUpdate(finalQuery);
 
-			String insertQuery = "INSERT INTO " + tableName.toLowerCase() + " VALUES(";
-			StringBuilder sb2 = new StringBuilder(insertQuery);
-
-			for (Map.Entry<String, String> entry : map.entrySet()) {
-
-				Field f = o.getClass().getDeclaredField("" + entry.getKey());
-				f.setAccessible(true);
-				
-				switch (map.get(entry.getKey())) {
-
-					case "int": {
-	
-						Integer i = (Integer) f.get(o);
-						sb2.append(i+ ",");
-					} break;
-	
-					case "String":{
-						String s = (String) f.get(o);
-						sb2.append("'"+s+"',");
-					} break;
-					
-					case "boolean":{
-						Boolean b = (Boolean) f.get(o);
-						sb2.append(b + ",");
-					} break;
-					
-					case "float":{
-						Float fl = (Float) f.get(o);
-						sb2.append(fl+",");
-					} break;
-					
-					case "double":{
-						Double d = (Double)f.get(o);
-						sb2.append(d+",");
-					} break;
-				
-				}
-
-			}
+			String insertQuery = "INSERT INTO " + tableName.toLowerCase()+getColumns() + " VALUES";
 			
-			sb2.deleteCharAt(sb2.length()-1);
-			sb2.append(")");
-			
-			insertQuery = sb2.toString();
-			
+			insertQuery = completeQuery(insertQuery,o);
+
 			System.out.println(insertQuery);
 			st.executeUpdate(insertQuery);
 
@@ -150,20 +76,17 @@ public class Persistance {
 			conn.close();
 
 		} catch (SQLException e) {
-
-			e.printStackTrace();
-		} catch (NoSuchFieldException | SecurityException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IllegalArgumentException | IllegalAccessException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 
 	}
-
-	// function that returns a map that contains variable name as key and variable
-	// type as value
+	
+	
+	/*
+	 *function that returns a map that contains variable name as key and variable
+	 *type as value
+	 */
+	 
 	private Map<String, String> getInstanceVariables(Object o) {
 
 		Map<String, String> map = new LinkedHashMap<>();
@@ -174,11 +97,154 @@ public class Persistance {
 		for (Field f : fields) {
 			String variableName = f.getName();
 			String variableType = f.getType().getSimpleName();
-
 			map.put(variableName, variableType);
 		}
 
 		return map;
 	}
 
+	/*
+	 * In this function I used a string builder instance to make a string like
+	 * (variableName variable dataType..) for query ... later java dataypes will be
+	 * changed with MYSQL datatypes
+	 */
+	private String initializeDataype(Map<String, String> map) {
+		StringBuilder sb = new StringBuilder();
+
+		sb.append("(id INTEGER AUTO_INCREMENT PRIMARY KEY, ");
+
+		for (Map.Entry<String, String> entry : map.entrySet()) {
+			sb.append(entry.getKey() + " " + entry.getValue() + " , ");
+		}
+
+		sb.delete(sb.length() - 2, sb.length() - 1);
+		sb.append(")");
+
+		return sb.toString();
+	}
+
+	
+	/*
+	 * I used this function to complet the insert query
+	 * the insert query initialy is :  "INSERT INTO " + tableName.toLowerCase() + " VALUES(
+	 * In this function I decide the dataype of the reference ,,o,, passed as argument
+	 * I make a String which contains the values of the member variables of refference o
+	 * and then concatenate it to the initial query
+	 */
+	private String completeQuery(String initialQuery, Object o) {
+		StringBuilder sb2 = new StringBuilder(initialQuery);
+		
+		sb2.append("(");
+		
+		try {
+			for (Map.Entry<String, String> entry : map.entrySet()) {
+
+				// get the variable value
+				Field f = o.getClass().getDeclaredField("" + entry.getKey());
+				f.setAccessible(true);
+
+				switch (map.get(entry.getKey())) {
+
+				case "int": {
+
+					Integer i = (Integer) f.get(o);
+					sb2.append(i + ",");
+				}
+					break;
+
+				case "String": {
+					String s = (String) f.get(o);
+					sb2.append("'" + s + "',");
+				}
+					break;
+
+				case "boolean": {
+					Boolean b = (Boolean) f.get(o);
+					sb2.append(b + ",");
+				}
+					break;
+
+				case "float": {
+					Float fl = (Float) f.get(o);
+					sb2.append(fl + ",");
+				}
+					break;
+
+				case "double": {
+					Double d = (Double) f.get(o);
+					sb2.append(d + ",");
+				}
+					break;
+
+				}
+
+			}
+		} catch (NoSuchFieldException | SecurityException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IllegalArgumentException | IllegalAccessException e) {
+			e.printStackTrace();
+		}
+		
+		sb2.deleteCharAt(sb2.length() - 1);
+		sb2.append(")");
+
+		return sb2.toString();
+	}
+	
+	
+	/*
+	 * change java data types with mysql data types 
+	 * ex double to DOUBLE, String to VARCHAR, int to INT, boolean to MEDIUMINT
+	 */
+	private void changesJavaDataTypesWithMysql(String[] initialDataypes) {
+		for (int i = 0; i < initialDataypes.length; i++) {
+
+			switch (initialDataypes[i]) {
+			case "double": {
+				initialDataypes[i] = "DOUBLE";
+			}
+				break;
+
+			case "String": {
+				initialDataypes[i] = "VARCHAR(255)";
+			}
+				break;
+
+			case "int": {
+				initialDataypes[i] = "INT";
+			}
+				break;
+
+			case "boolean": {
+				initialDataypes[i] = "MEDIUMINT";
+			}
+				break;
+			case "float": {
+				initialDataypes[i] = "FLOAT";
+			}
+				break;
+			}
+
+		}
+
+	}
+
+	/*
+	 * I used this function to make a string with needed columns ()
+	 */
+	private String getColumns() {
+		StringBuilder sb = new StringBuilder();
+		
+		sb.append("(");
+		for(Map.Entry<String,String> entry:map.entrySet()) {
+			sb.append(entry.getKey()+",");
+		}
+		
+		sb.deleteCharAt(sb.length() -1);
+		sb.append(")");
+		
+		return sb.toString();
+	}
+	
 }
